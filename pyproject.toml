@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bgg-mm"
+version = "0.1.0"
+description = "Check a BoardGameGeek wishlist against the Moenen en Mariken shop and notify via ntfy."
+authors = [
+  { name = "Luko", email = "you@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31.0",
+  "beautifulsoup4>=4.12.0"
+]
+
+[project.scripts]
+bgg-mm = "bgg_mm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,0 +1,19 @@
+{
+  "bgg": {
+    "username": "your-bgg-username",
+    "wishlist_priorities": [1, 2, 3]
+  },
+  "shop": {
+    "base_url": "https://www.moenen-en-mariken.nl"
+  },
+  "ntfy": {
+    "topic": "your-ntfy-topic",
+    "base_url": "https://ntfy.sh",
+    "priority": "default",
+    "tags": [
+      "game",
+      "bgg"
+    ]
+  },
+  "state_file": "data/availability.json"
+}
