@@ -9,7 +9,7 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
    uv venv
    source .venv/bin/activate
    ```
-2. Install dependencies and the CLI:
+2. Install dependencies and the CLI (this also writes/updates `uv.lock` for the Nix flake):
    ```bash
    uv sync
    ```
@@ -20,7 +20,8 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
    ```
    - `bgg.username`: your BoardGameGeek username.
    - `bgg.wishlist_priorities` (optional): restrict the priorities that are checked.
-   - `shop.base_url`: keep the default unless the shop domain changes.
+   - `bgg.subtypes` (optional): list of BGG collection subtypes to fetch; defaults to `["boardgame", "boardgameexpansion"]`.
+   - `shop.base_url`: keep the default (`http://www.moenen-en-mariken.nl`) unless the shop domain changes.
    - `ntfy.topic`: the topic name you want to publish to (on `https://ntfy.sh` by default).
    - `ntfy.base_url` (optional): point to a self-hosted ntfy server.
    - `ntfy.tags`, `ntfy.priority`, `ntfy.token` (optional): fine-tune the notification metadata or authenticate.
@@ -32,7 +33,17 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
 bgg-mm --config config.json
 ```
 
-Use `--dry-run` to skip publishing to ntfy while still updating the state file and printing results. Turn on verbose logs with `-v`.
+Use `--dry-run` to skip publishing to ntfy while still updating the state file and printing results. Turn on verbose logs with `-v`. Add `--debug-dump debug_xml` to keep raw BGG XML responses for troubleshooting.
+
+### Scraper debugging
+
+The shop client is runnable as a small CLI for debugging without involving the full wishlist script:
+
+```bash
+uv run python -m bgg_mm.shop --query "Vantage" --dump-dir debug_html -v
+```
+
+This reproduces the catalog POST search and the standard lookup flow, printing intermediate results and optionally dumping raw HTML so you can inspect the markup. Use `--detail-code` to fetch a specific `details.php?code=...` page directly.
 
 ## Scheduled execution
 
@@ -43,6 +54,48 @@ The script is safe to run as often as you like; it only emails you when somethin
 ```
 
 Adjust the paths and schedule to your liking. If you're on NixOS, see `flake.nix` for a module that can install the cron job declaratively.
+
+## NixOS integration
+
+The repository ships a Nix flake that relies on [uv2nix](https://github.com/astral-sh/uv2nix) to build the Python application from `pyproject.toml`/`uv.lock`.
+
+- Build the CLI:
+  ```bash
+  nix build .#bgg-mm
+  ./result/bin/bgg-mm --help
+  ```
+- Drop into a dev shell that provides `uv` and Python:
+  ```bash
+  nix develop
+  ```
+
+To run the checker from a host configuration, import the included NixOS module:
+
+```nix
+{
+  inputs.bgg-mm.url = "path:/path/to/BGG-MM"; # or e.g. "github:user/BGG-MM";
+
+  outputs = { self, nixpkgs, bgg-mm, ... }: {
+    nixosConfigurations.mymachine = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        bgg-mm.nixosModules.bgg-mm
+        ({ config, ... }: {
+          services.bgg-mm = {
+            enable = true;
+            user = "bggmm";
+            schedule = "0 6 * * *";
+            configFile = "/var/lib/bgg-mm/config.json";
+            extraArgs = "--verbose";
+          };
+        })
+      ];
+    };
+  };
+}
+```
+
+Ensure the referenced `config.json` exists on the target machine and keep `uv.lock` in sync with your Python dependencies (`uv sync` regenerates it) so Nix builds remain reproducible.
 
 ## Notes
 

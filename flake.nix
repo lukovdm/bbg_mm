@@ -3,37 +3,33 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
+    uv2nix.url = "github:astral-sh/uv2nix";
+    systems.url = "github:nix-systems/default";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs = inputs@{ self, nixpkgs, uv2nix, systems, ... }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" ];
-      forAllSystems = nixpkgs.lib.genAttrs systems;
+      inherit (nixpkgs.lib) genAttrs;
+      eachSystem = genAttrs (import systems);
+      mkPkgs = system:
+        import nixpkgs {
+          inherit system;
+          overlays = [ uv2nix.overlays.default ];
+        };
     in
     {
-      packages = forAllSystems (system:
+      packages = eachSystem (system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = mkPkgs system;
+          workspace = pkgs.uv2nix.loadWorkspace {
+            root = ./.;
+          };
         in
         {
-          default = pkgs.python3Packages.buildPythonApplication {
-            pname = "bgg-mm";
-            version = "0.1.0";
-            format = "pyproject";
-            src = ./.;
-            doCheck = false;
-            nativeBuildInputs = [
-              pkgs.python3Packages.setuptools
-              pkgs.python3Packages.wheel
-            ];
-            propagatedBuildInputs = [
-              pkgs.python3Packages.requests
-              pkgs.python3Packages.beautifulsoup4
-            ];
-          };
+          default = workspace.apps."bgg-mm";
         });
 
-      apps = forAllSystems (system:
+      apps = eachSystem (system:
         {
           default = {
             type = "app";
@@ -41,15 +37,15 @@
           };
         });
 
-      devShells = forAllSystems (system:
+      devShells = eachSystem (system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = mkPkgs system;
         in
         {
           default = pkgs.mkShell {
             packages = [
-              pkgs.python3
               pkgs.uv
+              pkgs.python3
             ];
           };
         });

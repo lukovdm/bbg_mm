@@ -17,6 +17,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="config.json", help="Path to config JSON (default: config.json)")
     parser.add_argument("--dry-run", action="store_true", help="Do not send notifications, only print output.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging.")
+    parser.add_argument(
+        "--debug-dump",
+        help="Directory to store raw BGG XML responses for debugging.",
+    )
     return parser.parse_args()
 
 
@@ -52,12 +56,21 @@ def fetch_available_products(
     shop_client: ShopClient,
     username: str,
     priorities: Optional[Iterable[int]],
-) -> List[ShopProduct]:
-    wishlist: List[BGGWishlistItem] = bgg_client.fetch_wishlist(username=username, priorities=priorities)
+    subtypes: Optional[Iterable[Optional[str]]] = None,
+    debug_dump: Optional[str] = None,
+) -> tuple[List[ShopProduct], List[tuple[BGGWishlistItem, Optional[ShopProduct]]]]:
+    wishlist: List[BGGWishlistItem] = bgg_client.fetch_wishlist(
+        username=username,
+        priorities=priorities,
+        subtypes=subtypes,
+        debug_dump_dir=debug_dump,
+    )
     logging.info("Checking availability for %s games", len(wishlist))
     available: List[ShopProduct] = []
+    results: List[tuple[BGGWishlistItem, Optional[ShopProduct]]] = []
     for entry in wishlist:
         product = shop_client.lookup(entry["name"])
+        results.append((entry, product))
         if product is None:
             logging.debug("No shop match for %s", entry["name"])
             continue
@@ -66,7 +79,7 @@ def fetch_available_products(
             available.append(product)
         else:
             logging.debug("Found but not available: %s", entry["name"])
-    return available
+    return available, results
 
 
 def main() -> None:
@@ -87,6 +100,12 @@ def main() -> None:
     if priorities is not None:
         priorities = [int(p) for p in priorities]
 
+    subtypes = bgg_cfg.get("subtypes")
+    if subtypes is not None:
+        subtypes = [s if s is None else str(s) for s in subtypes]
+    else:
+        subtypes = ["boardgame", "boardgameexpansion"]
+
     shop_cfg = config.get("shop", {})
     base_url = shop_cfg.get("base_url")
     if not base_url:
@@ -102,11 +121,13 @@ def main() -> None:
     bgg_client = BGGClient(session=session)
     shop_client = ShopClient(base_url=base_url, session=session)
 
-    available_products = fetch_available_products(
+    available_products, lookup_results = fetch_available_products(
         bgg_client=bgg_client,
         shop_client=shop_client,
         username=bgg_cfg["username"],
         priorities=priorities,
+        subtypes=subtypes,
+        debug_dump=args.debug_dump,
     )
 
     known_urls = state.known_urls
@@ -130,11 +151,29 @@ def main() -> None:
 
     state.update(product.url for product in available_products if product.available)
 
-    for product in available_products:
-        line = f"{'AVAILABLE' if product.available else 'UNAVAILABLE'}: {product.name} - {product.url}"
+    for entry, product in lookup_results:
+        if product is None:
+            print(f"NOT FOUND: {entry['name']}")
+            continue
+
+        status = "AVAILABLE" if product.available else "UNAVAILABLE"
+        line = f"{status}: {product.name} - {product.url}"
         if product.price:
             line += f" ({product.price})"
         print(line)
+
+    found_available = [entry["name"] for entry, product in lookup_results if product and product.available]
+    found_unavailable = [entry["name"] for entry, product in lookup_results if product and not product.available]
+    not_found = [entry["name"] for entry, product in lookup_results if product is None]
+
+    def join_names(names: List[str]) -> str:
+        return ", ".join(names) if names else "none"
+
+    print("")
+    print("Summary:")
+    print(f"- Available ({len(found_available)}): {join_names(found_available)}")
+    print(f"- Found but unavailable ({len(found_unavailable)}): {join_names(found_unavailable)}")
+    print(f"- Not found ({len(not_found)}): {join_names(not_found)}")
 
 
 if __name__ == "__main__":

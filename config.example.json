@@ -1,10 +1,11 @@
 {
   "bgg": {
     "username": "your-bgg-username",
-    "wishlist_priorities": [1, 2, 3]
+    "wishlist_priorities": [1, 2, 3],
+    "subtypes": ["boardgame", "boardgameexpansion"]
   },
   "shop": {
-    "base_url": "https://www.moenen-en-mariken.nl"
+    "base_url": "http://www.moenen-en-mariken.nl"
   },
   "ntfy": {
     "topic": "your-ntfy-topic",
