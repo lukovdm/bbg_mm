@@ -97,6 +97,43 @@ To run the checker from a host configuration, import the included NixOS module:
 
 Ensure the referenced `config.json` exists on the target machine and keep `uv.lock` in sync with your Python dependencies (`uv sync` regenerates it) so Nix builds remain reproducible.
 
+## Testing
+
+This project includes a comprehensive test suite to ensure all functionality works correctly.
+
+### Running tests
+
+1. Install test dependencies:
+   ```bash
+   pip install -e ".[dev]"
+   ```
+   
+   Or with uv:
+   ```bash
+   uv pip install -e ".[dev]"
+   ```
+
+2. Run all tests:
+   ```bash
+   pytest tests/
+   ```
+
+3. Run tests with verbose output:
+   ```bash
+   pytest tests/ -v
+   ```
+
+### Test coverage
+
+The test suite includes:
+- **BGG Client Tests**: XML parsing, priority filtering, retry handling, deduplication
+- **Shop Client Tests**: URL resolution, catalog search, product detail fetching, availability detection
+- **State Management Tests**: Persistence, state updates, JSON format validation
+- **Notification Tests**: Message formatting, ntfy integration, authentication
+- **Integration Tests**: End-to-end workflow validation
+
+All tests use mocked external dependencies and don't require internet access or real API credentials.
+
 ## Notes
 
 - This code was authored without direct access to the Moenen en Mariken site response due to the sandboxed environment. You may need to tweak the CSS selectors in `bgg_mm/shop.py` if the site markup differs from common WooCommerce patterns.

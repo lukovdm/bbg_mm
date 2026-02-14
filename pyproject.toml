@@ -16,6 +16,12 @@ dependencies = [
   "beautifulsoup4>=4.12.0"
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0.0",
+  "pytest-mock>=3.10.0"
+]
+
 [project.scripts]
 bgg-mm = "bgg_mm.cli:main"
 
