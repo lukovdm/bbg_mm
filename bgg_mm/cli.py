@@ -32,7 +32,7 @@ def load_config(path: Path) -> Dict:
 
 
 def build_notifier(ntfy_cfg: Optional[Dict], session: requests.Session) -> Optional[NtfyNotifier]:
-    if not ntfy_cfg:
+    if ntfy_cfg is None:
         return None
 
     missing = [key for key in ("topic",) if key not in ntfy_cfg]
