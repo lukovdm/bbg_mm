@@ -118,7 +118,9 @@ def main() -> None:
     session = requests.Session()
     session.headers.update({"User-Agent": "BGG-MM Availability Checker/1.0"})
 
-    bgg_client = BGGClient(session=session)
+    # Get BGG access token from config (optional but recommended)
+    access_token = bgg_cfg.get("access_token")
+    bgg_client = BGGClient(access_token=access_token)
     shop_client = ShopClient(base_url=base_url, session=session)
 
     available_products, lookup_results = fetch_available_products(

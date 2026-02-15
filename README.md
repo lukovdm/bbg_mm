@@ -19,6 +19,7 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
    $EDITOR config.json
    ```
    - `bgg.username`: your BoardGameGeek username.
+   - `bgg.access_token`: **Required** - Your BGG API access token. Get this from Account Settings > API Access on BoardGameGeek.com
    - `bgg.wishlist_priorities` (optional): restrict the priorities that are checked.
    - `bgg.subtypes` (optional): list of BGG collection subtypes to fetch; defaults to `["boardgame", "boardgameexpansion"]`.
    - `shop.base_url`: keep the default (`http://www.moenen-en-mariken.nl`) unless the shop domain changes.
@@ -26,6 +27,15 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
    - `ntfy.base_url` (optional): point to a self-hosted ntfy server.
    - `ntfy.tags`, `ntfy.priority`, `ntfy.token` (optional): fine-tune the notification metadata or authenticate.
    - `state_file`: path for the JSON file that tracks previously-seen available games.
+
+## Getting a BGG API Access Token
+
+The BoardGameGeek API now requires authentication. To get an access token:
+
+1. Log in to BoardGameGeek.com
+2. Go to **Account Settings** > **API Access**
+3. Generate a new access token
+4. Add it to your `config.json` under `bgg.access_token`
 
 ## Manual run
 

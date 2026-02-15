@@ -91,26 +91,18 @@ class TestFetchAvailableProducts:
 
     def test_fetch_available_products_integration(self, mocker):
         """Test the full flow of fetching available products."""
-        # Mock BGG API response
-        bgg_xml = """<?xml version="1.0" encoding="utf-8"?>
-<items totalitems="2">
-    <item objecttype="thing" objectid="1" subtype="boardgame" collid="1">
-        <name sortindex="1">Game One</name>
-        <yearpublished>2024</yearpublished>
-        <status wishlist="1" wishlistpriority="1" />
-    </item>
-    <item objecttype="thing" objectid="2" subtype="boardgame" collid="2">
-        <name sortindex="1">Game Two</name>
-        <yearpublished>2024</yearpublished>
-        <status wishlist="1" wishlistpriority="2" />
-    </item>
-</items>"""
+        # Mock BGG API client
+        from tests.test_bgg import MockCollectionItem, MockCollection
         
-        mock_bgg_session = Mock()
-        mock_bgg_response = Mock()
-        mock_bgg_response.status_code = 200
-        mock_bgg_response.text = bgg_xml
-        mock_bgg_session.get.return_value = mock_bgg_response
+        mock_bgg_client = Mock()
+        mock_collection = MockCollection([
+            MockCollectionItem(1, "Game One", wishlist_priority=1, year=2024),
+            MockCollectionItem(2, "Game Two", wishlist_priority=2, year=2024),
+        ])
+        mock_bgg_api = Mock()
+        mock_bgg_api.collection.return_value = mock_collection
+        
+        mocker.patch('bgg_mm.bgg.BGGAPIClient', return_value=mock_bgg_api)
         
         # Mock shop responses
         mock_shop_session = Mock()
@@ -129,7 +121,7 @@ class TestFetchAvailableProducts:
         """
         mock_shop_session.request.return_value = mock_shop_response
         
-        bgg_client = BGGClient(session=mock_bgg_session)
+        bgg_client = BGGClient(access_token="test_token")
         shop_client = ShopClient(base_url="http://www.moenen-en-mariken.nl", session=mock_shop_session)
         
         available, results = fetch_available_products(
