@@ -1,6 +1,7 @@
 {
   "bgg": {
     "username": "your-bgg-username",
+    "access_token": "",
     "wishlist_priorities": [1, 2, 3],
     "subtypes": ["boardgame", "boardgameexpansion"]
   },

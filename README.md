@@ -19,6 +19,7 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
    $EDITOR config.json
    ```
    - `bgg.username`: your BoardGameGeek username.
+   - `bgg.access_token`: Your BGG API access token (see below for how to get one). You can leave this empty initially and add it once approved.
    - `bgg.wishlist_priorities` (optional): restrict the priorities that are checked.
    - `bgg.subtypes` (optional): list of BGG collection subtypes to fetch; defaults to `["boardgame", "boardgameexpansion"]`.
    - `shop.base_url`: keep the default (`http://www.moenen-en-mariken.nl`) unless the shop domain changes.
@@ -27,11 +28,24 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
    - `ntfy.tags`, `ntfy.priority`, `ntfy.token` (optional): fine-tune the notification metadata or authenticate.
    - `state_file`: path for the JSON file that tracks previously-seen available games.
 
+## Getting a BGG API Access Token
+
+The BoardGameGeek API now requires authentication. To get an access token:
+
+1. Log in to BoardGameGeek.com
+2. Go to **Account Settings** > **API Access**
+3. Submit a request for an access token (if you haven't already)
+4. Once approved, copy the token and add it to your `config.json` under `bgg.access_token`
+
+**Note**: You can set up your configuration file before receiving the token. The script will give you a clear error message if you try to run it without a valid token, reminding you to add it once you receive it.
+
 ## Manual run
 
 ```bash
 bgg-mm --config config.json
 ```
+
+If you don't have your access token yet, you'll see a helpful error message with instructions.
 
 Use `--dry-run` to skip publishing to ntfy while still updating the state file and printing results. Turn on verbose logs with `-v`. Add `--debug-dump debug_xml` to keep raw BGG XML responses for troubleshooting.
 
@@ -96,6 +110,43 @@ To run the checker from a host configuration, import the included NixOS module:
 ```
 
 Ensure the referenced `config.json` exists on the target machine and keep `uv.lock` in sync with your Python dependencies (`uv sync` regenerates it) so Nix builds remain reproducible.
+
+## Testing
+
+This project includes a comprehensive test suite to ensure all functionality works correctly.
+
+### Running tests
+
+1. Install test dependencies:
+   ```bash
+   pip install -e ".[dev]"
+   ```
+   
+   Or with uv:
+   ```bash
+   uv pip install -e ".[dev]"
+   ```
+
+2. Run all tests:
+   ```bash
+   pytest tests/
+   ```
+
+3. Run tests with verbose output:
+   ```bash
+   pytest tests/ -v
+   ```
+
+### Test coverage
+
+The test suite includes:
+- **BGG Client Tests**: XML parsing, priority filtering, retry handling, deduplication
+- **Shop Client Tests**: URL resolution, catalog search, product detail fetching, availability detection
+- **State Management Tests**: Persistence, state updates, JSON format validation
+- **Notification Tests**: Message formatting, ntfy integration, authentication
+- **Integration Tests**: End-to-end workflow validation
+
+All tests use mocked external dependencies and don't require internet access or real API credentials.
 
 ## Notes
 

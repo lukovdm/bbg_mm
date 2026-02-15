@@ -463,7 +463,7 @@ class ShopClient:
             css_classes = stock_node.get("class", [])
             is_out = any(token in css_classes for token in ("out-of-stock",)) or any(
                 marker in stock_text
-                for marker in ("out of stock", "uitverkocht", "niet op voorraad")
+                for marker in ("out of stock", "uitverkocht", "niet op voorraad", "backorder")
             )
             availability = not is_out
         else:
