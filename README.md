@@ -19,7 +19,7 @@ This script keeps an eye on your BoardGameGeek wishlist and lets you know when o
    $EDITOR config.json
    ```
    - `bgg.username`: your BoardGameGeek username.
-   - `bgg.access_token`: **Required** - Your BGG API access token. Get this from Account Settings > API Access on BoardGameGeek.com
+   - `bgg.access_token`: Your BGG API access token (see below for how to get one). You can leave this empty initially and add it once approved.
    - `bgg.wishlist_priorities` (optional): restrict the priorities that are checked.
    - `bgg.subtypes` (optional): list of BGG collection subtypes to fetch; defaults to `["boardgame", "boardgameexpansion"]`.
    - `shop.base_url`: keep the default (`http://www.moenen-en-mariken.nl`) unless the shop domain changes.
@@ -34,14 +34,18 @@ The BoardGameGeek API now requires authentication. To get an access token:
 
 1. Log in to BoardGameGeek.com
 2. Go to **Account Settings** > **API Access**
-3. Generate a new access token
-4. Add it to your `config.json` under `bgg.access_token`
+3. Submit a request for an access token (if you haven't already)
+4. Once approved, copy the token and add it to your `config.json` under `bgg.access_token`
+
+**Note**: You can set up your configuration file before receiving the token. The script will give you a clear error message if you try to run it without a valid token, reminding you to add it once you receive it.
 
 ## Manual run
 
 ```bash
 bgg-mm --config config.json
 ```
+
+If you don't have your access token yet, you'll see a helpful error message with instructions.
 
 Use `--dry-run` to skip publishing to ntfy while still updating the state file and printing results. Turn on verbose logs with `-v`. Add `--debug-dump debug_xml` to keep raw BGG XML responses for troubleshooting.
 
