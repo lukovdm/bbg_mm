@@ -127,7 +127,7 @@ This project includes a comprehensive test suite to ensure all functionality wor
    uv pip install -e ".[dev]"
    ```
 
-2. Run all tests:
+2. Run all tests (excluding integration tests):
    ```bash
    pytest tests/
    ```
@@ -137,16 +137,50 @@ This project includes a comprehensive test suite to ensure all functionality wor
    pytest tests/ -v
    ```
 
-### Test coverage
+### Test types
 
-The test suite includes:
+#### Unit Tests (default)
+
+The test suite includes comprehensive unit tests that use mocked external dependencies and don't require internet access or real API credentials:
+
 - **BGG Client Tests**: XML parsing, priority filtering, retry handling, deduplication
 - **Shop Client Tests**: URL resolution, catalog search, product detail fetching, availability detection
 - **State Management Tests**: Persistence, state updates, JSON format validation
 - **Notification Tests**: Message formatting, ntfy integration, authentication
-- **Integration Tests**: End-to-end workflow validation
+- **CLI Tests**: Configuration loading, end-to-end workflow
 
-All tests use mocked external dependencies and don't require internet access or real API credentials.
+#### Integration Tests (opt-in)
+
+Integration tests validate the actual BGG API and Moenen en Mariken shop scraping functionality using real API calls. These tests are **skipped by default** and must be explicitly enabled.
+
+**To run integration tests:**
+
+```bash
+pytest -m integration tests/
+```
+
+**Integration test coverage:**
+- **BGG API Integration** (6 tests): Authentication, wishlist fetching, priority/subtype filtering, data structure validation
+- **Shop Scraping Integration** (7 tests): Real product searches, availability detection, price extraction, stock status handling
+- **End-to-End Integration** (3 tests): Full workflow validation, state tracking, new availability detection
+
+**Configuration:**
+
+Integration tests use credentials defined in `tests/integration_config.py`:
+- BGG Username: `mageleve`
+- BGG Access Token: Pre-configured test token
+- Shop URL: `http://www.moenen-en-mariken.nl`
+
+**Note:** Integration tests make real HTTP requests and may take 30-60 seconds to complete. They include automatic retry logic for flaky network requests and timeout protection.
+
+### Bugs Found
+
+During integration testing, we discovered and fixed several bugs. See [INTEGRATION_BUGS.md](INTEGRATION_BUGS.md) for detailed documentation of:
+- Priority field type mismatch (string vs int)
+- Year field returning 0 instead of None
+- Missing exception handler for invalid usernames
+
+All discovered bugs have been fixed and are now covered by integration tests.
 
 ## Notes
 

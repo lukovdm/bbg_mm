@@ -7,6 +7,7 @@ from boardgamegeek.exceptions import (
     BGGApiError,
     BGGApiRetryError,
     BGGApiUnauthorizedError,
+    BGGItemNotFoundError,
     BGGValueError,
 )
 
@@ -116,6 +117,12 @@ class BGGClient:
                         '  }'
                     ) from e
                     
+                except BGGItemNotFoundError as e:
+                    raise RuntimeError(
+                        f"BoardGameGeek user '{username}' not found or has no collection. "
+                        f"Please verify the username is correct."
+                    ) from e
+                    
                 except (BGGApiError, BGGValueError) as e:
                     raise RuntimeError(
                         f"Error fetching BGG collection for user '{username}': {e}"
@@ -135,16 +142,22 @@ class BGGClient:
                 seen_ids.add(item.id)
                 
                 # Apply priority filter if specified
-                priority = item.wishlist_priority
+                # Note: The BGG API library returns priority as a string, so convert it
+                priority_raw = item.wishlist_priority
+                priority = int(priority_raw) if priority_raw else None
                 if priorities_set and (priority is None or priority not in priorities_set):
                     continue
+                
+                # Note: The BGG API library returns year=0 for missing years, convert to None
+                year_raw = item.year
+                year = year_raw if year_raw and year_raw > 0 else None
                 
                 all_wishlist_items.append(
                     BGGWishlistItem(
                         {
                             "name": item.name,
                             "object_id": str(item.id),
-                            "year": item.year,
+                            "year": year,
                             "priority": priority,
                         }
                     )
