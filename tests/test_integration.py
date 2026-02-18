@@ -274,6 +274,8 @@ def test_shop_detail_page_parsing(shop_client):
     logging.info(f"Fetching detail page: {first_url}")
     
     # Fetch detail page
+    # Note: Testing _fetch_detail directly is intentional for integration tests
+    # to validate the detail page parsing logic works correctly with real HTML
     detail = shop_client._fetch_detail(first_url, timeout=TEST_TIMEOUT)
     
     assert detail is not None, "Should be able to fetch detail page"

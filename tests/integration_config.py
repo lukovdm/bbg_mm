@@ -1,6 +1,9 @@
 """Configuration for integration tests."""
 
 # BGG API Configuration
+# Note: These credentials are intentionally hardcoded for integration testing
+# as specified in the requirements. This is a test account token provided
+# specifically for integration testing purposes.
 BGG_TEST_USERNAME = "mageleve"
 BGG_TEST_TOKEN = "e62efc9d-932d-46e4-a5c4-32d311aae2df"
 
