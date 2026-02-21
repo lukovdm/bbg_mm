@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check BGG wishlist against Moenen en Mariken availability.")
     parser.add_argument("--config", default="config.json", help="Path to config JSON (default: config.json)")
     parser.add_argument("--dry-run", action="store_true", help="Do not send notifications, only print output.")
+    parser.add_argument("--reset", action="store_true", help="Clear the state file before running so all currently available games are re-notified.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging.")
     return parser.parse_args()
 
@@ -115,6 +116,14 @@ def main() -> None:
 
     state_file = Path(config.get("state_file", "data/availability.json"))
     state = AvailabilityState(state_file)
+
+    if args.reset:
+        if state_file.exists():
+            state_file.unlink()
+            logging.info("State file %s deleted; all available games will be re-notified.", state_file)
+        else:
+            logging.info("--reset requested but state file %s does not exist; nothing to clear.", state_file)
+
     state.load()
 
     session = requests.Session()

@@ -130,6 +130,12 @@
               default = "";
               description = "Additional command-line arguments passed to the CLI.";
             };
+
+            stateFile = mkOption {
+              type = types.str;
+              default = "/var/lib/bgg-mm/availability.json";
+              description = "Path to the state file that tracks already-notified games. Used by the reset command.";
+            };
           };
 
           config = lib.mkIf cfg.enable {
@@ -139,6 +145,22 @@
               description = "BGG-MM service user";
             };
             users.groups.${cfg.user} = lib.mkIf (cfg.user == "bgg-mm") {};
+
+            systemd.tmpfiles.rules = [
+              "d ${builtins.dirOf cfg.stateFile} 0750 ${cfg.user} ${cfg.user} -"
+            ];
+
+            environment.systemPackages = [
+              (pkgs.writeShellScriptBin "bgg-mm-reset" ''
+                set -e
+                if [ -f ${lib.escapeShellArg cfg.stateFile} ]; then
+                  rm ${lib.escapeShellArg cfg.stateFile}
+                  echo "State file removed. Run 'systemctl start bgg-mm.service' to re-notify all available games."
+                else
+                  echo "State file does not exist; nothing to reset."
+                fi
+              '')
+            ];
 
             systemd.services.bgg-mm = {
               description = "BGG wishlist availability checker";
