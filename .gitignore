@@ -18,3 +18,5 @@ data/
 Thumbs.db
 
 bgg_mm.egg-info/
+
+.pytest_cache/

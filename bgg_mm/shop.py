@@ -320,14 +320,58 @@ class ShopClient:
             price=best.get("price"),
         )
 
+    @staticmethod
+    def _shortened_queries(query: str) -> List[str]:
+        """Return progressively shorter fallback queries for *query*.
+
+        Many shops list games under a shorter name than the full BGG title.
+        E.g. BGG has "Dead Cells: The Rogue-Lite Board Game" but the shop
+        carries it as "Dead Cells".  We try the full title first, then strip
+        common subtitle separators (": ", " - ") from right to left, stopping
+        at a bare single word so we don't generate overly broad searches.
+        For each candidate we also add a punctuation-stripped variant so that
+        titles like "Clank!: A Deck-Building Adventure" → "Clank" work even
+        when the shop's search ignores punctuation.
+        """
+        def _strip_punct(s: str) -> str:
+            stripped = re.sub(r"[^\w\s]", "", s).strip()
+            # Collapse any double spaces left behind
+            return re.sub(r"\s+", " ", stripped)
+
+        seen: list[str] = []
+
+        def _add(s: str) -> None:
+            if s and s not in seen:
+                seen.append(s)
+            no_punct = _strip_punct(s)
+            if no_punct and no_punct != s and no_punct not in seen:
+                seen.append(no_punct)
+
+        _add(query)
+        current = query
+        for sep in (": ", " - ", ": ", " – "):
+            idx = current.rfind(sep)
+            if idx > 0:
+                shorter = current[:idx].strip()
+                _add(shorter)
+                current = shorter
+        return seen
+
     def _search(
         self, query: str, timeout: int, dump_dir: Optional[Path] = None
     ) -> List[dict]:
-        productos = self._search_product_catalog(
-            query, timeout=timeout, dump_dir=dump_dir
-        )
-        if productos:
-            return productos
+        for attempt in self._shortened_queries(query):
+            productos = self._search_product_catalog(
+                attempt, timeout=timeout, dump_dir=dump_dir
+            )
+            if productos:
+                if attempt != query:
+                    logging.debug(
+                        "Catalog search for %r found no results; retry with %r succeeded",
+                        query,
+                        attempt,
+                    )
+                return productos
 
         params = {"s": query, "post_type": "product"}
         search_url = f"{self.base_url}/?{urlencode(params)}"
@@ -416,14 +460,83 @@ class ShopClient:
         return products
 
     @staticmethod
-    def _pick_best_match(target: str, candidates: List[dict]) -> Optional[dict]:
+    def _similarity(a: str, b: str) -> float:
+        """Return a composite similarity score in [0, 1] between two strings.
+
+        Three metrics are combined and the maximum is returned so that
+        partial matches (e.g. shop title "Dead Cells" matching BGG title
+        "Dead Cells: The Rogue-Lite Board Game") are handled correctly:
+
+        1. **Full ratio** – standard SequenceMatcher on the whole strings.
+        2. **Partial ratio** – slide the shorter string as a window over the
+           longer one and take the best window score.  This makes sub-string
+           matches score very highly.
+        3. **Token-set ratio** – compare the *sorted sets of words* from both
+           strings.  This is resilient to extra subtitle words on either side.
+        """
+        a_l, b_l = a.lower(), b.lower()
+
+        # 1. Full ratio
+        full = SequenceMatcher(None, a_l, b_l).ratio()
+
+        # 2. Partial ratio: slide the shorter string over the longer one
+        longer, shorter = (a_l, b_l) if len(a_l) >= len(b_l) else (b_l, a_l)
+        n = len(shorter)
+        if n == 0:
+            partial = 0.0
+        elif n == len(longer):
+            partial = full
+        else:
+            partial = max(
+                SequenceMatcher(None, longer[i : i + n], shorter).ratio()
+                for i in range(len(longer) - n + 1)
+            )
+
+        # 3. Token-set ratio: intersection vs remainder, order-independent
+        tokens_a = set(re.split(r"\W+", a_l)) - {""}
+        tokens_b = set(re.split(r"\W+", b_l)) - {""}
+        intersection = tokens_a & tokens_b
+        if not tokens_a and not tokens_b:
+            token_set = 1.0
+        elif not intersection:
+            token_set = 0.0
+        else:
+            sorted_inter = " ".join(sorted(intersection))
+            remainder_a = " ".join(sorted(tokens_a - intersection))
+            remainder_b = " ".join(sorted(tokens_b - intersection))
+            str1 = sorted_inter.strip()
+            str2 = (sorted_inter + " " + remainder_a).strip()
+            str3 = (sorted_inter + " " + remainder_b).strip()
+            token_set = max(
+                SequenceMatcher(None, str1, str2).ratio(),
+                SequenceMatcher(None, str1, str3).ratio(),
+                SequenceMatcher(None, str2, str3).ratio(),
+            )
+
+        return max(full, partial, token_set)
+
+    @staticmethod
+    def _pick_best_match(target: str, candidates: List[dict], min_ratio: float = 0.4) -> Optional[dict]:
         def score(title: str) -> float:
-            return SequenceMatcher(None, title.lower(), target.lower()).ratio()
+            return ShopClient._similarity(title, target)
 
         sorted_candidates = sorted(
             candidates, key=lambda c: score(c["title"]), reverse=True
         )
-        return sorted_candidates[0] if sorted_candidates else None
+        if not sorted_candidates:
+            return None
+        best = sorted_candidates[0]
+        best_score = score(best["title"])
+        if best_score < min_ratio:
+            logging.debug(
+                "Best candidate %r scored %.2f < %.2f threshold for query %r; discarding",
+                best["title"],
+                best_score,
+                min_ratio,
+                target,
+            )
+            return None
+        return best
 
     def _fetch_detail(
         self, url: str, timeout: int, dump_dir: Optional[Path] = None
@@ -448,13 +561,20 @@ class ShopClient:
         _dump_response(response.text, dump_dir, f"detail-{absolute_url}")
 
         soup = BeautifulSoup(response.text, "html.parser")
-        title_node = soup.select_one(".product_title, h1.product_title")
+        title_node = soup.select_one(
+            ".product_title, h1.product_title, h3.artikelname, .artikelname"
+        )
         title = title_node.get_text(strip=True) if title_node else None
 
         price_node = soup.select_one(
-            ".summary .price .amount, .summary .price .woocommerce-Price-amount"
+            ".summary .price .amount, .summary .price .woocommerce-Price-amount, .prodPrijs"
         )
-        price_text = price_node.get_text(strip=True) if price_node else None
+        if price_node:
+            raw = price_node.get_text(strip=True)
+            # Strip "Prijs: " label prefix used by this shop's detail pages
+            price_text = raw.removeprefix("Prijs:").strip()
+        else:
+            price_text = None
 
         availability = True
         stock_node = soup.select_one(".summary .stock")
@@ -467,13 +587,20 @@ class ShopClient:
             )
             availability = not is_out
         else:
-            # If no stock element, fall back to checking the CTA button for hints.
-            button = soup.select_one("form.cart button[type=submit]")
-            if button:
-                button_text = button.get_text(strip=True).lower()
-                availability = not any(
-                    marker in button_text for marker in ("lees meer", "read more")
-                )
+            # Check the shop's native "Op voorraad:" field in the detail list
+            for li in soup.select("article.product li"):
+                text = _normalise_whitespace(li.get_text()).lower()
+                if text.startswith("op voorraad:"):
+                    availability = "ja" in text
+                    break
+            else:
+                # Last resort: check the CTA button for hints.
+                button = soup.select_one("form.cart button[type=submit]")
+                if button:
+                    button_text = button.get_text(strip=True).lower()
+                    availability = not any(
+                        marker in button_text for marker in ("lees meer", "read more")
+                    )
 
         return ShopProduct(
             name=title or url,

@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -17,10 +18,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="config.json", help="Path to config JSON (default: config.json)")
     parser.add_argument("--dry-run", action="store_true", help="Do not send notifications, only print output.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging.")
-    parser.add_argument(
-        "--debug-dump",
-        help="Directory to store raw BGG XML responses for debugging.",
-    )
     return parser.parse_args()
 
 
@@ -32,7 +29,7 @@ def load_config(path: Path) -> Dict:
 
 
 def build_notifier(ntfy_cfg: Optional[Dict], session: requests.Session) -> Optional[NtfyNotifier]:
-    if not ntfy_cfg:
+    if ntfy_cfg is None:
         return None
 
     missing = [key for key in ("topic",) if key not in ntfy_cfg]
@@ -57,13 +54,11 @@ def fetch_available_products(
     username: str,
     priorities: Optional[Iterable[int]],
     subtypes: Optional[Iterable[Optional[str]]] = None,
-    debug_dump: Optional[str] = None,
 ) -> tuple[List[ShopProduct], List[tuple[BGGWishlistItem, Optional[ShopProduct]]]]:
     wishlist: List[BGGWishlistItem] = bgg_client.fetch_wishlist(
         username=username,
         priorities=priorities,
         subtypes=subtypes,
-        debug_dump_dir=debug_dump,
     )
     logging.info("Checking availability for %s games", len(wishlist))
     available: List[ShopProduct] = []
@@ -96,6 +91,13 @@ def main() -> None:
     if "username" not in bgg_cfg:
         raise ValueError("bgg.username is required in the configuration.")
 
+    bgg_token = os.environ.get("BGG_API_TOKEN")
+    if not bgg_token:
+        raise ValueError(
+            "BGG_API_TOKEN environment variable is not set. "
+            "Obtain a token at https://boardgamegeek.com/applications and export it."
+        )
+
     priorities = bgg_cfg.get("wishlist_priorities")
     if priorities is not None:
         priorities = [int(p) for p in priorities]
@@ -118,7 +120,7 @@ def main() -> None:
     session = requests.Session()
     session.headers.update({"User-Agent": "BGG-MM Availability Checker/1.0"})
 
-    bgg_client = BGGClient(session=session)
+    bgg_client = BGGClient(access_token=bgg_token)
     shop_client = ShopClient(base_url=base_url, session=session)
 
     available_products, lookup_results = fetch_available_products(
@@ -127,7 +129,6 @@ def main() -> None:
         username=bgg_cfg["username"],
         priorities=priorities,
         subtypes=subtypes,
-        debug_dump=args.debug_dump,
     )
 
     known_urls = state.known_urls

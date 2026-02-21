@@ -2,51 +2,86 @@
   description = "BGG wishlist availability checker with ntfy notifications";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
-    uv2nix.url = "github:astral-sh/uv2nix";
-    systems.url = "github:nix-systems/default";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = inputs@{ self, nixpkgs, uv2nix, systems, ... }:
+  outputs = { self, nixpkgs, pyproject-nix, uv2nix, pyproject-build-systems, ... }:
     let
-      inherit (nixpkgs.lib) genAttrs;
-      eachSystem = genAttrs (import systems);
-      mkPkgs = system:
-        import nixpkgs {
-          inherit system;
-          overlays = [ uv2nix.overlays.default ];
-        };
+      inherit (nixpkgs) lib;
+      forAllSystems = lib.genAttrs lib.systems.flakeExposed;
+
+      workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
+
+      overlay = workspace.mkPyprojectOverlay {
+        sourcePreference = "wheel";
+      };
+
+      editableOverlay = workspace.mkEditablePyprojectOverlay {
+        root = "$REPO_ROOT";
+      };
+
+      pythonSets = forAllSystems (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          python = pkgs.python3;
+        in
+        (pkgs.callPackage pyproject-nix.build.packages {
+          inherit python;
+        }).overrideScope (lib.composeManyExtensions [
+          pyproject-build-systems.overlays.default
+          overlay
+        ]));
     in
     {
-      packages = eachSystem (system:
-        let
-          pkgs = mkPkgs system;
-          workspace = pkgs.uv2nix.loadWorkspace {
-            root = ./.;
-          };
-        in
-        {
-          default = workspace.apps."bgg-mm";
-        });
+      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt);
 
-      apps = eachSystem (system:
-        {
-          default = {
-            type = "app";
-            program = "${self.packages.${system}.default}/bin/bgg-mm";
-          };
-        });
+      packages = forAllSystems (system: {
+        default = pythonSets.${system}.mkVirtualEnv "bgg-mm-env" workspace.deps.default;
+      });
 
-      devShells = eachSystem (system:
+      apps = forAllSystems (system: {
+        default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/bgg-mm";
+        };
+      });
+
+      devShells = forAllSystems (system:
         let
-          pkgs = mkPkgs system;
+          pkgs = nixpkgs.legacyPackages.${system};
+          pythonSet = pythonSets.${system}.overrideScope editableOverlay;
+          virtualenv = pythonSet.mkVirtualEnv "bgg-mm-dev-env" workspace.deps.all;
         in
         {
           default = pkgs.mkShell {
-            packages = [
-              pkgs.uv
-              pkgs.python3
-            ];
+            packages = [ virtualenv pkgs.uv ];
+            env = {
+              UV_NO_SYNC = "1";
+              UV_PYTHON = pythonSet.python.interpreter;
+              UV_PYTHON_DOWNLOADS = "never";
+            };
+            shellHook = ''
+              unset PYTHONPATH
+              export REPO_ROOT=$(git rev-parse --show-toplevel)
+            '';
           };
         });
 
@@ -56,7 +91,7 @@
           packageDefault = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         in {
           options.services.bgg-mm = with lib; {
-            enable = mkEnableOption "BGG wishlist availability checker cron job";
+            enable = mkEnableOption "BGG wishlist availability checker";
 
             package = mkOption {
               type = types.package;
@@ -66,18 +101,27 @@
 
             configFile = mkOption {
               type = types.path;
-              description = "Path to the configuration JSON file used by the cron job.";
+              description = "Path to the configuration JSON file.";
+            };
+
+            tokenFile = mkOption {
+              type = types.path;
+              description = ''
+                Path to a file containing the BGG API token as:
+                  BGG_API_TOKEN=<your-token>
+                This file should be owner-readable only (e.g. managed by agenix or sops-nix).
+              '';
             };
 
             schedule = mkOption {
               type = types.str;
               default = "0 7 * * *";
-              description = "Cron schedule (min hour dom month dow).";
+              description = "Systemd OnCalendar expression (cron-style schedule).";
             };
 
             user = mkOption {
               type = types.str;
-              default = "root";
+              default = "bgg-mm";
               description = "User that should run the checker.";
             };
 
@@ -88,19 +132,35 @@
             };
           };
 
-          config = lib.mkIf cfg.enable (
-            let
-              jobScript = pkgs.writeShellScript "bgg-mm-cron" ''
-                exec ${cfg.package}/bin/bgg-mm --config ${cfg.configFile}${lib.optionalString (cfg.extraArgs != "") " ${cfg.extraArgs}"}
-              '';
-            in
-            {
-              services.cron.enable = true;
-              services.cron.systemCronJobs = [
-                "${cfg.schedule} ${cfg.user} ${jobScript}"
-              ];
-            }
-          );
+          config = lib.mkIf cfg.enable {
+            users.users.${cfg.user} = lib.mkIf (cfg.user == "bgg-mm") {
+              isSystemUser = true;
+              group = "bgg-mm";
+              description = "BGG-MM service user";
+            };
+            users.groups.${cfg.user} = lib.mkIf (cfg.user == "bgg-mm") {};
+
+            systemd.services.bgg-mm = {
+              description = "BGG wishlist availability checker";
+              after = [ "network-online.target" ];
+              wants = [ "network-online.target" ];
+              serviceConfig = {
+                Type = "oneshot";
+                User = cfg.user;
+                ExecStart = "${cfg.package}/bin/bgg-mm --config ${cfg.configFile}${lib.optionalString (cfg.extraArgs != "") " ${cfg.extraArgs}"}";
+                EnvironmentFile = cfg.tokenFile;
+              };
+            };
+
+            systemd.timers.bgg-mm = {
+              description = "Run BGG-MM on schedule";
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                OnCalendar = cfg.schedule;
+                Persistent = true;
+              };
+            };
+          };
         };
     };
 }
