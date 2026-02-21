@@ -25,3 +25,9 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -m "not live" -v
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false

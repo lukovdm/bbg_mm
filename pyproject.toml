@@ -21,6 +21,7 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "pytest-mock>=3.14",
+  "pytest-cov>=6.0",
 ]
 
 [project.scripts]
@@ -33,3 +34,13 @@ where = ["."]
 markers = [
   "live: marks tests as requiring live network access (deselect with '-m not live')",
 ]
+addopts = "--cov=bgg_mm --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+branch = true
+source = ["bgg_mm"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

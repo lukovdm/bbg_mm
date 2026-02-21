@@ -1,9 +1,24 @@
+import base64
 import logging
 from typing import Iterable, List, Optional
 
 import requests
 
 from .shop import ShopProduct
+
+
+def _encode_header(value: str) -> str:
+    """RFC 2047-encode a header value if it contains non-ASCII characters.
+
+    Python's http.client encodes headers as latin-1, which rejects emoji.
+    ntfy accepts RFC 2047 encoded-words (=?utf-8?b?...?=) in the Title header.
+    """
+    try:
+        value.encode("latin-1")
+        return value  # pure ASCII/latin-1 — no encoding needed
+    except UnicodeEncodeError:
+        encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+        return f"=?utf-8?b?{encoded}?="
 
 
 class NtfyNotifier:
@@ -29,7 +44,7 @@ class NtfyNotifier:
 
     def send(self, title: str, body: str) -> None:
         url = f"{self.base_url}/{self.topic}"
-        headers = {"Title": title}
+        headers = {"Title": _encode_header(title)}
         if self.priority:
             headers["Priority"] = self.priority
         if self.tags:

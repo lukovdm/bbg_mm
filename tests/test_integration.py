@@ -10,7 +10,7 @@ import requests
 
 from bgg_mm.bgg import BGGClient, BGGWishlistItem
 from bgg_mm.cli import fetch_available_products, load_config, build_notifier
-from bgg_mm.notify import format_ntfy_message, format_ntfy_unavailable_message
+from bgg_mm.notify import format_ntfy_message, format_ntfy_unavailable_message, _encode_header
 from bgg_mm.shop import ShopClient, ShopProduct
 
 
@@ -259,3 +259,28 @@ class TestFormatNtfyMessage:
         unavail_body = format_ntfy_unavailable_message(products)
         # The two messages should have different framing text
         assert available_body != unavail_body
+
+
+class TestEncodeHeader:
+    def test_ascii_title_unchanged(self):
+        assert _encode_header("Hello World") == "Hello World"
+
+    def test_latin1_title_unchanged(self):
+        assert _encode_header("Spëcïal") == "Spëcïal"
+
+    def test_emoji_title_is_rfc2047_encoded(self):
+        result = _encode_header("Games now available! 🎲")
+        assert result.startswith("=?utf-8?b?")
+        assert result.endswith("?=")
+
+    def test_encoded_header_decodes_correctly(self):
+        import base64
+        title = "BGG Wishlist: games now available! 🎲"
+        result = _encode_header(title)
+        # Strip the =?utf-8?b? ... ?= wrapper and decode
+        inner = result[len("=?utf-8?b?"):-len("?=")]
+        assert base64.b64decode(inner).decode("utf-8") == title
+
+    def test_sad_emoji_encoded(self):
+        result = _encode_header("Games out of stock 😔")
+        assert result.startswith("=?utf-8?b?")
