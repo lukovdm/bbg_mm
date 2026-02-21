@@ -57,3 +57,17 @@ def format_ntfy_message(new_products: Iterable[ShopProduct]) -> str:
     lines.append("")
     lines.append("Happy gaming!")
     return "\n".join(lines)
+
+
+def format_ntfy_unavailable_message(products: Iterable[ShopProduct]) -> str:
+    lines = [
+        "The following wishlist games are no longer available at Moenen en Mariken:",
+        "",
+    ]
+    for product in products:
+        line = f"- {product.name}: {product.url}"
+        lines.append(line)
+
+    lines.append("")
+    lines.append("Better luck next time!")
+    return "\n".join(lines)

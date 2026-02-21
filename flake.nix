@@ -219,13 +219,7 @@
 
             environment.systemPackages = [
               (pkgs.writeShellScriptBin "bgg-mm-reset" ''
-                set -e
-                if [ -f ${lib.escapeShellArg cfg.stateFile} ]; then
-                  rm ${lib.escapeShellArg cfg.stateFile}
-                  echo "State file removed. Run 'systemctl start bgg-mm.service' to re-notify all available games."
-                else
-                  echo "State file does not exist; nothing to reset."
-                fi
+                exec systemctl start bgg-mm-reset.service
               '')
             ];
 
@@ -237,6 +231,18 @@
                 Type = "oneshot";
                 User = cfg.user;
                 ExecStart = "${cfg.package}/bin/bgg-mm --config ${generatedConfig}${lib.optionalString (cfg.extraArgs != "") " ${cfg.extraArgs}"}";
+                EnvironmentFile = cfg.tokenFile;
+              };
+            };
+
+            systemd.services.bgg-mm-reset = {
+              description = "BGG wishlist availability checker (force re-notify all)";
+              after = [ "network-online.target" ];
+              wants = [ "network-online.target" ];
+              serviceConfig = {
+                Type = "oneshot";
+                User = cfg.user;
+                ExecStart = "${cfg.package}/bin/bgg-mm --config ${generatedConfig} --reset${lib.optionalString (cfg.extraArgs != "") " ${cfg.extraArgs}"}";
                 EnvironmentFile = cfg.tokenFile;
               };
             };

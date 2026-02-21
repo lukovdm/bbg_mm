@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional
 import requests
 
 from .bgg import BGGClient, BGGWishlistItem
-from .notify import NtfyNotifier, format_ntfy_message
+from .notify import NtfyNotifier, format_ntfy_message, format_ntfy_unavailable_message
 from .shop import ShopClient, ShopProduct
 from .state import AvailabilityState
 
@@ -141,25 +141,52 @@ def main() -> None:
     )
 
     known_urls = state.known_urls
-    newly_available = [product for product in available_products if product.url not in known_urls]
+    known_unavailable_urls = state.known_unavailable_urls
+
+    # Products that just became available (not in the previous available set).
+    newly_available = [p for p in available_products if p.url not in known_urls]
+
+    # Products that are in the shop but out of stock, and were available last run.
+    currently_unavailable = [
+        p for _, p in lookup_results
+        if p is not None and not p.available
+    ]
+    newly_unavailable = [p for p in currently_unavailable if p.url in known_urls]
 
     notifier = build_notifier(config.get("ntfy"), session=session)
+
     if newly_available and notifier:
         logging.info("Detected %s newly available games.", len(newly_available))
         if args.dry_run:
             logging.info("Dry run enabled; skipping ntfy send.")
         else:
-            body = format_ntfy_message(newly_available)
             notifier.send(
-                title="BGG Wishlist availability update",
-                body=body,
+                title="BGG Wishlist: games now available! 🎲",
+                body=format_ntfy_message(newly_available),
             )
     elif newly_available:
         logging.info("Detected newly available games but no ntfy configuration provided.")
     else:
         logging.info("No newly available games detected.")
 
-    state.update(product.url for product in available_products if product.available)
+    if newly_unavailable and notifier:
+        logging.info("Detected %s games that went out of stock.", len(newly_unavailable))
+        if args.dry_run:
+            logging.info("Dry run enabled; skipping ntfy send.")
+        else:
+            notifier.send(
+                title="BGG Wishlist: games out of stock 😔",
+                body=format_ntfy_unavailable_message(newly_unavailable),
+            )
+    elif newly_unavailable:
+        logging.info("Games went out of stock but no ntfy configuration provided.")
+    else:
+        logging.info("No games went out of stock.")
+
+    state.update(
+        available_urls=(p.url for p in available_products),
+        unavailable_urls=(p.url for p in currently_unavailable),
+    )
 
     for entry, product in lookup_results:
         if product is None:

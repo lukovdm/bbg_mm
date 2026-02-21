@@ -10,6 +10,7 @@ import requests
 
 from bgg_mm.bgg import BGGClient, BGGWishlistItem
 from bgg_mm.cli import fetch_available_products, load_config, build_notifier
+from bgg_mm.notify import format_ntfy_message, format_ntfy_unavailable_message
 from bgg_mm.shop import ShopClient, ShopProduct
 
 
@@ -204,3 +205,57 @@ class TestBuildNotifier:
         notifier = build_notifier({"topic": "t", "base_url": "https://custom.ntfy.io"}, session)
         assert notifier is not None
         assert "custom.ntfy.io" in notifier.base_url
+
+
+# ---------------------------------------------------------------------------
+# format_ntfy_message / format_ntfy_unavailable_message
+# ---------------------------------------------------------------------------
+
+class TestFormatNtfyMessage:
+    def _make_product(self, name: str, url: str, price: str = None) -> ShopProduct:
+        return ShopProduct(name=name, url=url, available=True, price=price)
+
+    def test_available_message_contains_product_name(self):
+        products = [self._make_product("Pandemic", "http://shop/p", price="€ 49,95")]
+        body = format_ntfy_message(products)
+        assert "Pandemic" in body
+        assert "€ 49,95" in body
+        assert "http://shop/p" in body
+
+    def test_available_message_omits_price_when_none(self):
+        products = [self._make_product("Azul", "http://shop/a")]
+        body = format_ntfy_message(products)
+        assert "Azul" in body
+        # No price parentheses should appear
+        assert "(" not in body
+
+    def test_available_message_multiple_products(self):
+        products = [
+            self._make_product("Pandemic", "http://shop/p"),
+            self._make_product("Azul", "http://shop/a"),
+        ]
+        body = format_ntfy_message(products)
+        assert "Pandemic" in body
+        assert "Azul" in body
+
+    def test_unavailable_message_contains_product_name(self):
+        products = [ShopProduct(name="Pandemic", url="http://shop/p", available=False)]
+        body = format_ntfy_unavailable_message(products)
+        assert "Pandemic" in body
+        assert "http://shop/p" in body
+
+    def test_unavailable_message_multiple_products(self):
+        products = [
+            ShopProduct(name="Pandemic", url="http://shop/p", available=False),
+            ShopProduct(name="Azul", url="http://shop/a", available=False),
+        ]
+        body = format_ntfy_unavailable_message(products)
+        assert "Pandemic" in body
+        assert "Azul" in body
+
+    def test_available_and_unavailable_messages_are_distinct(self):
+        products = [ShopProduct(name="Pandemic", url="http://shop/p", available=True, price="€ 10")]
+        available_body = format_ntfy_message(products)
+        unavail_body = format_ntfy_unavailable_message(products)
+        # The two messages should have different framing text
+        assert available_body != unavail_body

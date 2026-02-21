@@ -15,6 +15,7 @@ import pytest
 import requests
 
 from bgg_mm.bgg import BGGClient, BGGWishlistItem
+from bgg_mm.notify import NtfyNotifier, format_ntfy_message
 from bgg_mm.shop import ShopClient, ShopProduct
 
 # ---------------------------------------------------------------------------
@@ -267,3 +268,72 @@ class TestEndToEndLive:
                     f"Product URL for {name!r} is not absolute: {product.url!r}"
                 )
                 assert isinstance(product.available, bool)
+
+
+# ---------------------------------------------------------------------------
+# ntfy live tests
+# ---------------------------------------------------------------------------
+
+NTFY_TOPIC = "bgg_mm_luko"
+NTFY_BASE_URL = "https://ntfy.sh"
+
+
+@pytest.fixture(scope="module")
+def ntfy_notifier(session):
+    return NtfyNotifier(base_url=NTFY_BASE_URL, topic=NTFY_TOPIC, session=session)
+
+
+@pytest.mark.live
+class TestNtfyLive:
+    """Send real notifications to the bgg_mm_luko ntfy channel.
+
+    Subscribe at https://ntfy.sh/bgg_mm_luko to see them arrive.
+    """
+
+    def test_send_notification(self, ntfy_notifier):
+        """Send a notification and verify the server accepted it (HTTP 200)."""
+        products = [
+            ShopProduct(
+                name="Vantage (ENG)",
+                url="http://www.moenen-en-mariken.nl/producten/details.php?code=850032180863",
+                available=True,
+                price="€ 82,95",
+            ),
+        ]
+        body = format_ntfy_message(products)
+        # send() raises on non-2xx — if it returns cleanly the server accepted it
+        ntfy_notifier.send(title="BGG-MM test notification", body=body)
+
+    def test_format_ntfy_message_contains_product_details(self, ntfy_notifier):
+        """format_ntfy_message must include the product name, price and URL."""
+        products = [
+            ShopProduct(
+                name="Dead Cells (ENG)",
+                url="http://www.moenen-en-mariken.nl/producten/details.php?code=807658001409",
+                available=True,
+                price="€ 49,95",
+            ),
+        ]
+        body = format_ntfy_message(products)
+        assert "Dead Cells" in body
+        assert "€ 49,95" in body
+        assert "807658001409" in body
+
+    def test_send_multi_product_notification(self, ntfy_notifier):
+        """Send a notification with multiple products."""
+        products = [
+            ShopProduct(
+                name="Vantage (ENG)",
+                url="http://www.moenen-en-mariken.nl/producten/details.php?code=850032180863",
+                available=True,
+                price="€ 82,95",
+            ),
+            ShopProduct(
+                name="Dead Cells (ENG)",
+                url="http://www.moenen-en-mariken.nl/producten/details.php?code=807658001409",
+                available=True,
+                price="€ 49,95",
+            ),
+        ]
+        body = format_ntfy_message(products)
+        ntfy_notifier.send(title="BGG-MM multi-product test", body=body)
