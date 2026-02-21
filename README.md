@@ -85,10 +85,10 @@ The BGG API token must **never** be stored in `config.json` or committed to the 
 The secret file should contain exactly one line:
 
 ```
-BGG_API_TOKEN=9f3da624-8998-4e48-a2f1-0c1d3ccfe637
+BGG_API_TOKEN=your-token-here
 ```
 
-Then reference it in your NixOS configuration:
+Then reference it in your NixOS configuration — no separate `config.json` needed, everything is declared in Nix:
 
 ```nix
 {
@@ -104,10 +104,19 @@ Then reference it in your NixOS configuration:
           age.secrets.bgg-api-token.file = ./secrets/bgg-api-token.age;
 
           services.bgg-mm = {
-            enable = true;
-            configFile = "/var/lib/bgg-mm/config.json";
-            tokenFile  = config.age.secrets.bgg-api-token.path;
-            schedule   = "0 7 * * *";   # systemd OnCalendar syntax
+            enable    = true;
+            tokenFile = config.age.secrets.bgg-api-token.path;
+            schedule  = "0 7 * * *";   # systemd OnCalendar syntax
+
+            bgg.username           = "your-bgg-username";
+            bgg.wishlistPriorities = [ 1 2 3 ];  # optional; null = all priorities
+
+            # shop.baseUrl defaults to http://www.moenen-en-mariken.nl
+
+            ntfy.topic    = "your-ntfy-topic";
+            ntfy.priority = "default";           # optional
+            ntfy.tags     = [ "game" "bgg" ];    # optional
+            # ntfy.baseUrl = "https://ntfy.sh";  # optional, this is the default
           };
         })
       ];
@@ -116,10 +125,16 @@ Then reference it in your NixOS configuration:
 }
 ```
 
-The module creates a dedicated `bgg-mm` system user, a `systemd.service` of type `oneshot`, and a `systemd.timer` on the given schedule.
+The module generates a `config.json` in the Nix store at build time and passes it to the CLI automatically. The module also creates a dedicated `bgg-mm` system user, the state directory, a `systemd.service` of type `oneshot`, and a `systemd.timer` on the given schedule.
+
+To re-send all currently available games (demo / reset):
+
+```bash
+sudo bgg-mm-reset
+sudo systemctl start bgg-mm.service
+```
 
 ## Notes
 
-- This code was authored without direct access to the Moenen en Mariken site response due to the sandboxed environment. You may need to tweak the CSS selectors in `bgg_mm/shop.py` if the site markup differs from common WooCommerce patterns.
 - BoardGameGeek occasionally returns HTTP 202 while it prepares the wishlist export; the script automatically retries for a short time.
-- The state file (`data/availability.json` by default) can be deleted if you ever want to receive notifications for current stock again.
+- The state file (`/var/lib/bgg-mm/availability.json` by default) tracks already-notified games; delete it or run `bgg-mm-reset` to receive notifications for current stock again.

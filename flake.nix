@@ -89,6 +89,25 @@
         let
           cfg = config.services.bgg-mm;
           packageDefault = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+          # Build the config.json from the structured Nix options at evaluation time.
+          generatedConfig = pkgs.writeText "bgg-mm-config.json" (builtins.toJSON (
+            lib.filterAttrsRecursive (_: v: v != null) {
+              bgg = {
+                username = cfg.bgg.username;
+                wishlist_priorities = cfg.bgg.wishlistPriorities;
+                subtypes = cfg.bgg.subtypes;
+              };
+              shop.base_url = cfg.shop.baseUrl;
+              state_file = cfg.stateFile;
+              ntfy = if cfg.ntfy.topic != null then lib.filterAttrsRecursive (_: v: v != null) {
+                topic    = cfg.ntfy.topic;
+                base_url = cfg.ntfy.baseUrl;
+                priority = cfg.ntfy.priority;
+                tags     = cfg.ntfy.tags;
+              } else null;
+            }
+          ));
         in {
           options.services.bgg-mm = with lib; {
             enable = mkEnableOption "BGG wishlist availability checker";
@@ -99,15 +118,10 @@
               description = "Package that provides the bgg-mm CLI.";
             };
 
-            configFile = mkOption {
-              type = types.path;
-              description = "Path to the configuration JSON file.";
-            };
-
             tokenFile = mkOption {
               type = types.path;
               description = ''
-                Path to a file containing the BGG API token as:
+                Path to a file containing the BGG API token as a single line:
                   BGG_API_TOKEN=<your-token>
                 This file should be owner-readable only (e.g. managed by agenix or sops-nix).
               '';
@@ -134,7 +148,60 @@
             stateFile = mkOption {
               type = types.str;
               default = "/var/lib/bgg-mm/availability.json";
-              description = "Path to the state file that tracks already-notified games. Used by the reset command.";
+              description = "Path to the JSON file that tracks already-notified games.";
+            };
+
+            bgg = {
+              username = mkOption {
+                type = types.str;
+                description = "BoardGameGeek username whose wishlist is checked.";
+              };
+
+              wishlistPriorities = mkOption {
+                type = types.nullOr (types.listOf types.int);
+                default = null;
+                description = "Wishlist priorities to include (1=must have … 5=thinking about it). Null means all.";
+              };
+
+              subtypes = mkOption {
+                type = types.nullOr (types.listOf types.str);
+                default = [ "boardgame" "boardgameexpansion" ];
+                description = "BGG collection subtypes to fetch.";
+              };
+            };
+
+            shop = {
+              baseUrl = mkOption {
+                type = types.str;
+                default = "http://www.moenen-en-mariken.nl";
+                description = "Base URL of the shop to scrape.";
+              };
+            };
+
+            ntfy = {
+              topic = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "ntfy topic to publish to. Leave null to disable notifications.";
+              };
+
+              baseUrl = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "ntfy server base URL. Defaults to https://ntfy.sh when null.";
+              };
+
+              priority = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "ntfy message priority (min/low/default/high/urgent).";
+              };
+
+              tags = mkOption {
+                type = types.nullOr (types.listOf types.str);
+                default = null;
+                description = "ntfy message tags/emoji shortcodes.";
+              };
             };
           };
 
@@ -169,7 +236,7 @@
               serviceConfig = {
                 Type = "oneshot";
                 User = cfg.user;
-                ExecStart = "${cfg.package}/bin/bgg-mm --config ${cfg.configFile}${lib.optionalString (cfg.extraArgs != "") " ${cfg.extraArgs}"}";
+                ExecStart = "${cfg.package}/bin/bgg-mm --config ${generatedConfig}${lib.optionalString (cfg.extraArgs != "") " ${cfg.extraArgs}"}";
                 EnvironmentFile = cfg.tokenFile;
               };
             };
